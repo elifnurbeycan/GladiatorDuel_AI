@@ -13,7 +13,7 @@ public class EnemyController : MonoBehaviour
 
     private IEnumerator EnemyTurnRoutine()
     {
-        // Düşünme payı
+        GameManager.Instance.uiManager.SetTurnText("RAKİP DÜŞÜNÜYOR...");
         yield return new WaitForSeconds(1.0f);
 
         bool actionDone = false;
@@ -22,8 +22,6 @@ public class EnemyController : MonoBehaviour
         while (!actionDone && safety < 10)
         {
             safety++;
-
-            // 🔥 ÖDEV KURALI: YAPAY ZEKA YOK, RASTGELELİK VAR 🔥
             // 0: Move, 1: Ranged, 2: Melee, 3: Sleep, 4: ArmorUp
             int choice = Random.Range(0, 5); 
 
@@ -42,84 +40,47 @@ public class EnemyController : MonoBehaviour
         GameManager.Instance.EndEnemyTurn();
     }
 
-    // ================================================================
-    // AKSİYONLAR (LOG EKLENDİ)
-    // ================================================================
-
     private bool EnemyMove()
     {
         if (!enemy.SpendMana(4)) return false;
 
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Rakip Hareket Etti");
-
-        // Rastgele İleri veya Geri
         bool forward = Random.value > 0.5f;
-
-        if (forward)
+        if (forward) 
+        {
+            GameManager.Instance.uiManager.SetTurnText("RAKİP: İLERİ GELDİ");
             GameManager.Instance.MoveCloser(false); 
-        else
+        }
+        else 
+        {
+            GameManager.Instance.uiManager.SetTurnText("RAKİP: GERİ KAÇTI");
             GameManager.Instance.MoveAway(false);
-
+        }
         return true;
     }
 
     private bool EnemyRanged()
     {
         if (enemy.currentAmmo <= 0) return false;
-        if (!enemy.SpendMana(20)) return false;
+        // 12 MANA
+        if (!enemy.SpendMana(12)) return false; 
         if (GameManager.Instance.currentDistance == DistanceLevel.Close) return false;
 
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Rakip Ok Fırlattı!");
-
+        GameManager.Instance.uiManager.SetTurnText("RAKİP: OK ATTI! (15-20 Hsr)");
         enemy.currentAmmo--;
-        
-        int damage = Random.Range(15, 21);
-        
-        // Ok fırlat (Projectile)
-        enemy.ShootProjectile("Player", damage);
-
+        enemy.ShootProjectile(player.tag, Random.Range(15, 21));
         return true;
     }
 
     private bool EnemyMelee()
     {
         if (GameManager.Instance.currentDistance != DistanceLevel.Close) return false;
+        // 20 MANA
+        if (!enemy.SpendMana(20)) return false;
 
-        // Rastgele güç seçimi
-        bool power = Random.value > 0.5f;
-        int manaCost = power ? 30 : 10;
-
-        if (!enemy.SpendMana(manaCost)) return false;
-
-        // 🔥 LOG (Saldırı tipine göre)
-        if(power) GameManager.Instance.uiManager.UpdateBattleLog("Rakip Güçlü Saldırdı!");
-        else GameManager.Instance.uiManager.UpdateBattleLog("Rakip Hızlı Saldırdı!");
-
+        GameManager.Instance.uiManager.SetTurnText("RAKİP: KILIÇ VURDU! (20-30 Hsr)");
         enemy.TriggerAttack();
-
-        int dmg = 0;
-        if (power)
-        {
-            if (Random.value > 0.5f) 
-            {
-                GameManager.Instance.uiManager.UpdateBattleLog("Rakip Iskaladı!");
-                return true; // Hamle yapıldı ama boşa gitti
-            }
-            dmg = Random.Range(25, 36);
-        }
-        else
-        {
-            if (Random.value > 0.85f)
-            {
-                GameManager.Instance.uiManager.UpdateBattleLog("Rakip Iskaladı!");
-                return true; 
-            }
-            dmg = Random.Range(10, 13);
-        }
-
-        player.TakeDamage(dmg);
+        // 20-30 HASAR
+        player.TakeDamage(Random.Range(20, 31));
         return true;
     }
 
@@ -127,9 +88,8 @@ public class EnemyController : MonoBehaviour
     {
         if (enemy.currentMana >= enemy.maxMana) return false;
 
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Rakip Dinleniyor...");
-
+        GameManager.Instance.uiManager.SetTurnText("RAKİP: DİNLENİYOR (++Mana)");
+        // +40 MANA / +15 CAN
         enemy.RestoreMana(40);
         enemy.RestoreHP(15);
         return true;
@@ -137,11 +97,10 @@ public class EnemyController : MonoBehaviour
 
     private bool EnemyArmorUp()
     {
-        if (!enemy.SpendMana(25)) return false;
+        // 5 MANA
+        if (!enemy.SpendMana(15)) return false; 
 
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Rakip Savunmaya Geçti!");
-
+        GameManager.Instance.uiManager.SetTurnText("RAKİP: KALKAN ALDI");
         enemy.ActivateArmorUp(2);
         return true;
     }

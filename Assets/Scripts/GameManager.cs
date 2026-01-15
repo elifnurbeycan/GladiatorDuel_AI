@@ -1,45 +1,38 @@
 using UnityEngine;
 using System.Collections;
+using UnityEngine.SceneManagement;
 
-public enum DistanceLevel
-{
-    Close,
-    Mid,
-    Far
-}
+public enum DistanceLevel { Close, Mid, Far }
 
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
-    [Header("References")]
-    public Gladiator player;
-    public Gladiator enemy;
-    public UIManager uiManager;
-    public EnemyController enemyController;
+    [Header("Game Settings")]
+    public bool isTrainingMode = false;
+    public static bool useTrainedAI = true;
 
+    [Header("Gladiators")]
+    public Gladiator player; // Kırmızı
+    public Gladiator enemy;  // Mavi
+    
     [Header("Transforms")]
     public Transform playerTransform;
     public Transform enemyTransform;
 
-    [Header("Turn / State")]
+    [Header("Managers")]
+    public UIManager uiManager;
+
+    [Header("Game State")]
     public bool isPlayerTurn = true;
-    public DistanceLevel currentDistance = DistanceLevel.Far;
+    public DistanceLevel currentDistance = DistanceLevel.Mid;
+    public int turnCount = 0;
 
-    [Header("Audio Settings")]
-    public AudioSource musicSource; 
+    private float stepSize = 2.0f;    
+    private float mapBoundary = 7.5f; 
+    private float minDistance = 1.5f; 
 
-    // 🔥 YENİ AYARLAR: ADIM VE SINIRLAR 🔥
-    
-    // 1. Bir adımda kaç birim gidilsin? (Küçük adım)
-    private float stepSize = 2.0f; 
-
-    // 2. Sahnenin en ucu neresi? (Kırmızı Çarpılar)
-    // Karakterler -7.5 ile 7.5 arasında hapsolacak.
-    private float mapBoundary = 7.5f;
-
-    // 3. Karakterler birbirine en fazla ne kadar yaklaşabilir? (İç içe girmesinler)
-    private float minDistanceBetween = 1.5f; 
+    private bool isAnimating = false;
 
     private void Awake()
     {
@@ -49,161 +42,261 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        isPlayerTurn = true;
-        
-        float musicVol = PlayerPrefs.GetFloat("MusicVolume", 0.5f);
-        AudioListener.volume = musicVol;
-
-        if (musicSource != null)
+        if (isTrainingMode)
         {
-            musicSource.loop = true;
-            if (!musicSource.isPlaying) musicSource.Play();
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = -1;
+            
+            Time.timeScale = 100.0f; 
+        }
+        else
+        {
+            QualitySettings.vSyncCount = 1;
+            Application.targetFrameRate = 60;
+            Time.timeScale = 1.0f;
         }
 
-        // Başlangıçta en uçlara (Duvarlara) yerleştir
-        InitPositions();
-        
-        // Mesafeyi hesapla ve UI güncelle
+        if (!isTrainingMode) InitPositions(); 
         UpdateDistanceState();
-        uiManager.UpdateAllUI();
-        uiManager.SetTurnText("Oyuncu Sırası");
-        uiManager.UpdateActionButtonsInteractable(true);
+        UpdateUI();
+        
+        StartTurn();
     }
 
     private void InitPositions()
     {
-        if (playerTransform == null || enemyTransform == null) return;
-
-        // Player En Sola (-7.5), Enemy En Sağa (7.5)
-        playerTransform.position = new Vector3(-mapBoundary, playerTransform.position.y, playerTransform.position.z);
-        enemyTransform.position  = new Vector3(mapBoundary, enemyTransform.position.y, enemyTransform.position.z);
+        if (playerTransform) playerTransform.position = new Vector3(-mapBoundary + 1f, playerTransform.position.y, 0);
+        if (enemyTransform) enemyTransform.position = new Vector3(mapBoundary - 1f, enemyTransform.position.y, 0);
     }
 
-    // =======================================================
-    // BAĞIMSIZ HAREKET MANTIĞI (Sadece Oynayan Hareket Eder)
-    // =======================================================
-
-    public void MoveCloser(bool actorIsPlayer)
+    
+    public void StartTurn()
     {
-        // Hedef pozisyonu hesapla
-        float currentX = actorIsPlayer ? playerTransform.position.x : enemyTransform.position.x;
-        float targetX;
+        if (isAnimating) return;
+        turnCount++;
 
-        if (actorIsPlayer)
+        if (isPlayerTurn)
         {
-            // Player SAĞA (+) gider
-            targetX = currentX + stepSize;
-            
-            // Düşmana çarpmamak için sınırla (Düşmanın biraz solunda durmalı)
-            float limit = enemyTransform.position.x - minDistanceBetween;
-            if (targetX > limit) targetX = limit;
+            uiManager.SetTurnText("--- SENİN SIRAN ---");
+            uiManager.UpdateTurnIndicator(true);
+            uiManager.UpdateActionButtonsInteractable(true);
+            uiManager.ShowMeleeChoicePanel(false);
+
+            if (player.GetComponent<EnemyAgent>() != null)
+                player.GetComponent<EnemyAgent>().StartEnemyTurn();
         }
         else
         {
-            // Enemy SOLA (-) gider
-            targetX = currentX - stepSize;
-
-            // Oyuncuya çarpmamak için sınırla (Oyuncunun biraz sağında durmalı)
-            float limit = playerTransform.position.x + minDistanceBetween;
-            if (targetX < limit) targetX = limit;
+            uiManager.SetTurnText("RAKİP BEKLENİYOR...");
+            uiManager.UpdateTurnIndicator(false);
+            uiManager.UpdateActionButtonsInteractable(false);
+            
+            if (enemy.GetComponent<EnemyAgent>() != null)
+                enemy.GetComponent<EnemyAgent>().StartEnemyTurn();
+            else
+                enemy.GetComponent<EnemyController>().StartEnemyTurn();
         }
-
-        // Hareketi Başlat
-        StartCoroutine(SmoothMoveRoutine(actorIsPlayer, targetX));
     }
 
-    public void MoveAway(bool actorIsPlayer)
+    public void EndPlayerTurn()
     {
-        float currentX = actorIsPlayer ? playerTransform.position.x : enemyTransform.position.x;
+        // Eğer animasyon varsa bekle (Eğitim modunda isAnimating hiç true olmayacak)
+        if (isAnimating) return;
+        
+        player.OnTurnEnd(); 
+        isPlayerTurn = false;
+        UpdateUI();
+        if (CheckGameOver()) return;
+        StartTurn();
+    }
+
+    public void EndEnemyTurn()
+    {
+        if (isAnimating) return;
+        
+        enemy.OnTurnEnd();
+        isPlayerTurn = true;
+        UpdateUI();
+        if (CheckGameOver()) return;
+        StartTurn();
+    }
+
+
+    public void MoveCloser(bool isPlayerAction)
+    {
+        Transform actor = isPlayerAction ? playerTransform : enemyTransform;
+        Transform target = isPlayerAction ? enemyTransform : playerTransform;
+
+        float currentX = actor.position.x;
         float targetX;
 
-        if (actorIsPlayer)
+        if (isPlayerAction)
         {
-            // Player SOLA (-) kaçar
+            targetX = currentX + stepSize;
+            if (targetX > target.position.x - minDistance) targetX = target.position.x - minDistance;
+        }
+        else
+        {
             targetX = currentX - stepSize;
-            
-            // Duvar Sınırı (-7.5)
+            if (targetX < target.position.x + minDistance) targetX = target.position.x + minDistance;
+        }
+
+        // Eğitim modundaysak animasyon başlatma, direkt ışınla
+        if (isTrainingMode)
+        {
+            actor.position = new Vector3(targetX, actor.position.y, actor.position.z);
+            UpdateDistanceState();
+            UpdateUI();
+            // isAnimating'i true YAPMIYORUZ. Böylece oyun kilitlenmiyor.
+        }
+        else
+        {
+            StartCoroutine(SmoothMoveRoutine(isPlayerAction, targetX));
+        }
+    }
+
+    public void MoveAway(bool isPlayerAction)
+    {
+        Transform actor = isPlayerAction ? playerTransform : enemyTransform;
+        float currentX = actor.position.x;
+        float targetX;
+
+        if (isPlayerAction)
+        {
+            targetX = currentX - stepSize;
             if (targetX < -mapBoundary) targetX = -mapBoundary;
         }
         else
         {
-            // Enemy SAĞA (+) kaçar
             targetX = currentX + stepSize;
-
-            // Duvar Sınırı (7.5)
             if (targetX > mapBoundary) targetX = mapBoundary;
         }
 
-        // Hareketi Başlat
-        StartCoroutine(SmoothMoveRoutine(actorIsPlayer, targetX));
+        // Eğitim modundaysak direkt ışınla
+        if (isTrainingMode)
+        {
+            actor.position = new Vector3(targetX, actor.position.y, actor.position.z);
+            UpdateDistanceState();
+            UpdateUI();
+        }
+        else
+        {
+            StartCoroutine(SmoothMoveRoutine(isPlayerAction, targetX));
+        }
     }
 
-    // =======================================================
-    // GÖRSEL GÜNCELLEME
-    // =======================================================
-
-    private IEnumerator SmoothMoveRoutine(bool actorIsPlayer, float targetX)
+    private IEnumerator SmoothMoveRoutine(bool isPlayerAction, float targetX)
     {
-        // 1. Sadece hareket eden kişinin animasyonunu aç
-        if (actorIsPlayer) { player.SetMoveAnimation(true); player.ToggleWalkSound(true); }
-        else { enemy.SetMoveAnimation(true); enemy.ToggleWalkSound(true); }
+        isAnimating = true; // Sadece normal oyunda kilit vurulur
+        uiManager.UpdateActionButtonsInteractable(false);
 
-        Transform movingTransform = actorIsPlayer ? playerTransform : enemyTransform;
-        Vector3 startPos = movingTransform.position;
+        Gladiator actorGladiator = isPlayerAction ? player : enemy;
+        Transform actorTransform = isPlayerAction ? playerTransform : enemyTransform;
+
+        actorGladiator.SetMoveAnimation(true);
+        actorGladiator.ToggleWalkSound(true);
+
+        Vector3 startPos = actorTransform.position;
         Vector3 endPos = new Vector3(targetX, startPos.y, startPos.z);
-
-        float duration = 0.8f; // Hareket süresi (Biraz hızlandırdım)
+        
+        float duration = 0.5f; // Normal oyun hızı
         float elapsed = 0f;
-
+        
         while (elapsed < duration)
         {
-            float t = elapsed / duration;
-            t = t * t * (3f - 2f * t); // Smooth step
-
-            movingTransform.position = Vector3.Lerp(startPos, endPos, t);
+            actorTransform.position = Vector3.Lerp(startPos, endPos, elapsed / duration);
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        movingTransform.position = endPos;
+        actorTransform.position = endPos;
 
-        // 2. Animasyonu kapat
-        if (actorIsPlayer) { player.SetMoveAnimation(false); player.ToggleWalkSound(false); }
-        else { enemy.SetMoveAnimation(false); enemy.ToggleWalkSound(false); }
+        actorGladiator.SetMoveAnimation(false);
+        actorGladiator.ToggleWalkSound(false);
 
-        // 3. Mesafeyi Ölç ve Durumu Güncelle (Far/Mid/Close)
         UpdateDistanceState();
+        UpdateUI();
+
+        isAnimating = false; // Kilit açılır
+
+        if (isPlayerTurn) uiManager.UpdateActionButtonsInteractable(true);
     }
 
-    // 🔥 MESAFEYİ ÖLÇÜP DURUMU GÜNCELLEYEN FONKSİYON 🔥
     private void UpdateDistanceState()
     {
+        if(playerTransform == null || enemyTransform == null) return;
+
         float dist = Vector3.Distance(playerTransform.position, enemyTransform.position);
-
-        // Mesafe eşikleri (Senin isteğine göre ayarladım)
-        // Close: < 2.5 birim
-        // Mid:   2.5 ile 7.0 arası
-        // Far:   > 7.0 birim
         
-        if (dist <= 2.5f)
-        {
-            currentDistance = DistanceLevel.Close;
-        }
-        else if (dist > 2.5f && dist <= 7.0f)
-        {
-            currentDistance = DistanceLevel.Mid;
-        }
-        else
-        {
-            currentDistance = DistanceLevel.Far;
-        }
+        if (dist <= 2.5f) currentDistance = DistanceLevel.Close;
+        else if (dist > 2.5f && dist <= 7.0f) currentDistance = DistanceLevel.Mid;
+        else currentDistance = DistanceLevel.Far;
 
-        uiManager.UpdateDistanceText(currentDistance);
+        if(uiManager != null) uiManager.UpdateDistanceText(currentDistance);
     }
 
-    // --- (Diğer yardımcı fonksiyonlar aynen kalıyor) ---
-    public void EndPlayerTurn() { player.OnTurnEnd(); uiManager.UpdateAllUI(); CheckGameEnd(); if (IsGameOver()) return; isPlayerTurn = false; uiManager.SetTurnText("Rakip Sırası"); uiManager.UpdateActionButtonsInteractable(false); enemyController.StartEnemyTurn(); }
-    public void EndEnemyTurn() { enemy.OnTurnEnd(); uiManager.UpdateAllUI(); CheckGameEnd(); if (IsGameOver()) return; isPlayerTurn = true; uiManager.SetTurnText("Oyuncu Sırası"); uiManager.UpdateActionButtonsInteractable(true); }
-    private void CheckGameEnd() { if (player.currentHP <= 0) { uiManager.SetTurnText("Kaybettin!"); uiManager.UpdateActionButtonsInteractable(false); } else if (enemy.currentHP <= 0) { uiManager.SetTurnText("Kazandın!"); uiManager.UpdateActionButtonsInteractable(false); } }
-    private bool IsGameOver() { return player.currentHP <= 0 || enemy.currentHP <= 0; }
+    public void UpdateUI()
+    {
+        uiManager.UpdateHealth(player.currentHP, enemy.currentHP, player.maxHP);
+        uiManager.UpdateMana(player.currentMana, enemy.currentMana, player.maxMana);
+        uiManager.UpdateAmmo(player.currentAmmo, enemy.currentAmmo);
+    }
+
+    private bool CheckGameOver()
+    {
+        if (player.currentHP <= 0 || enemy.currentHP <= 0)
+        {
+            string msg = (player.currentHP <= 0) ? "RAKİP KAZANDI!" : "KAZANDIN!";
+            
+            if (isTrainingMode)
+            {
+                // 1. Sonuçları Beyne İlet
+                if (player.GetComponent<EnemyAgent>() != null)
+                    player.GetComponent<EnemyAgent>().ProcessMatchResult(player.currentHP > 0);
+                
+                if (enemy.GetComponent<EnemyAgent>() != null)
+                    enemy.GetComponent<EnemyAgent>().ProcessMatchResult(enemy.currentHP > 0);
+
+                // 2. Oyunu Sıfırla (Döngü Devam Etsin)
+                ResetGame();
+
+                // 3. Hız Ayarı
+                Time.timeScale = 100.0f; 
+            }
+            else 
+            {
+                if(useTrainedAI && enemy.GetComponent<EnemyAgent>() != null)
+                {
+                    enemy.GetComponent<EnemyAgent>().ProcessMatchResult(enemy.currentHP > 0);
+                }
+
+                uiManager.UpdateBattleLog(msg);
+                uiManager.ShowEndGamePanel(msg);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void ResetGame()
+    {
+        player.currentHP = player.maxHP;
+        player.currentMana = player.startMana;
+        player.currentAmmo = player.maxAmmo;
+        player.armorUpActive = false;
+
+        enemy.currentHP = enemy.maxHP;
+        enemy.currentMana = enemy.startMana;
+        enemy.currentAmmo = enemy.maxAmmo;
+        enemy.armorUpActive = false;
+
+        isPlayerTurn = true;
+        turnCount = 0;
+
+        InitPositions();
+        UpdateDistanceState();
+        UpdateUI();
+
+        StartTurn();
+    }
 }

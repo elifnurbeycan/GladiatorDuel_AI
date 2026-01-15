@@ -18,8 +18,8 @@ public class MainMenuController : MonoBehaviour
         float sfxVol   = PlayerPrefs.GetFloat("SFXVolume", 0.5f);
 
         // 2. Sliderları ayarla
-        musicSlider.value = musicVol;
-        sfxSlider.value   = sfxVol;
+        if (musicSlider != null) musicSlider.value = musicVol;
+        if (sfxSlider != null)   sfxSlider.value   = sfxVol;
 
         // 3. Menü müziğinin sesini ayarla
         if (menuMusicSource != null)
@@ -28,10 +28,41 @@ public class MainMenuController : MonoBehaviour
         }
     }
 
+
+    // 1. "Rastgele Başla" butonu (Btn_RandomStart) buna bağlanacak.
+    // Bu butona basınca AI kapalı gider
+    public void OnStartRandomAI()
+    {
+        Debug.Log("Oyun Başlatılıyor: Mod -> RASTGELE (Eğitimsiz)");
+        
+        // GameManager'a "Sakın beyni kullanma" diyoruz
+        GameManager.useTrainedAI = false; 
+        
+        // Oyun sahnesini (Index 1) yüklüyoruz
+        SceneManager.LoadScene(1);
+    }
+
+    // 2. "Yapay Zeka Yükle" butonu (Btn_LoadAI) buna bağlanacak.
+    // Bu butona basınca AI açık gider, düşman akıllı oynar.
+    public void OnStartTrainedAI()
+    {
+        Debug.Log("Oyun Başlatılıyor: Mod -> EĞİTİLMİŞ (Akıllı)");
+        
+        // GameManager'a "Eğittiğimiz JSON dosyasını kullan" diyoruz
+        GameManager.useTrainedAI = true; 
+        
+        // Oyun sahnesini (Index 1) yüklüyoruz
+        SceneManager.LoadScene(1);
+    }
+
+    // (Eski buton fonksiyonu - Artık kullanmana gerek yok ama hata vermesin diye dursun)
     public void OnNewGameClicked()
     {
-        SceneManager.LoadScene(1); // 1 numaralı sahneye (SampleScene) git
+        OnStartRandomAI(); 
     }
+
+    // SES AYARLARI
+    
 
     public void OnMusicSliderChanged(float value)
     {

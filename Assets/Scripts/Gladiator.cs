@@ -22,14 +22,14 @@ public class Gladiator : MonoBehaviour
     public int armorUpTurnsRemaining = 0; 
 
     [Header("Audio")]
-    public AudioSource audioSource;   // Karakterin üzerindeki Audio Source
-    public AudioClip attackSound;     // Vuruş Sesi
-    public AudioClip hitSound;        // Hasar/Acı Sesi
-    public AudioClip walkSound;       // Yürüme Sesi (Loop)
+    public AudioSource audioSource;
+    public AudioClip attackSound;
+    public AudioClip hitSound;
+    public AudioClip walkSound;
 
     [Header("Projectile Settings")]
-    public GameObject arrowPrefab;    // Fırlatılacak Ok Prefab'ı
-    public Transform firePoint;       // Okun çıkacağı nokta (Namlu)
+    public GameObject arrowPrefab;
+    public Transform firePoint;
 
     private void Awake()
     {
@@ -38,89 +38,90 @@ public class Gladiator : MonoBehaviour
         currentAmmo = maxAmmo;
     }
 
-    // Awake'ten hemen sonra çalışır
     private void Start()
     {
-        // 🔥 SFX AYARINI HAFIZADAN ÇEK 🔥
         float sfxVol = PlayerPrefs.GetFloat("SFXVolume", 0.5f);
-
-        if (audioSource != null)
-        {
-            audioSource.volume = sfxVol; // Karakterin sesini ayarla
-        }
+        if (audioSource != null) audioSource.volume = sfxVol;
     }
 
-    // --- FIRLATMA (PROJECTILE) SİSTEMİ ---
-    
-    public void ShootProjectile(string targetTag, int dmg)
+    //  ATIŞ MANTIĞI 
+    public void ShootProjectile(string targetTag, float damage)
     {
-        // 1. Animasyon ve Ses
-        TriggerAttack(); 
-
-        // 2. Pozisyonu Al
-        Vector3 spawnPos = (firePoint != null) ? firePoint.position : transform.position;
-        
-        // 🔥 YENİ YÖN AYARI (Kesin Çözüm) 🔥
-        Quaternion spawnRot;
-
-        // Eğer bu scripti çalıştıran kişi "Enemy" ise;
-        if (gameObject.CompareTag("Enemy"))
+        // 1. EĞİTİM MODU 
+        // Fizik motorunu devre dışı bırak, direkt hasar ver.
+        // Bu sayede oyun hızı 50x olsa bile oklar içinden geçip gitmez
+        if (GameManager.Instance.isTrainingMode)
         {
-            // Oku 180 derece döndür (Sola baksın)
-            spawnRot = Quaternion.Euler(0, 0, 180f);
-        }
-        else
-        {
-            // Player ise düz kalsın (Sağa baksın)
-            spawnRot = Quaternion.identity; // (0,0,0) demektir
-        }
-
-        // 3. Oku Yarat
-        if (arrowPrefab != null)
-        {
-            GameObject arrow = Instantiate(arrowPrefab, spawnPos, spawnRot);
-            
-            Projectile p = arrow.GetComponent<Projectile>();
-            if (p != null)
+            GameObject target = GameObject.FindGameObjectWithTag(targetTag);
+            if (target != null)
             {
-                p.damage = dmg;
-                p.targetTag = targetTag;
+                Gladiator targetGladiator = target.GetComponent<Gladiator>();
+                if (targetGladiator != null)
+                {
+                    targetGladiator.TakeDamage((int)damage);
+                }
+            }
+            // Nesne yaratmadığımız için Destroy etmeye gerek yok. RAM dostu.
+            return; 
+        }
+
+        // 2. NORMAL OYUN MODU 
+        // Görsellik önemli, oku fiziksel olarak yarat.
+        GameObject projectile = Instantiate(arrowPrefab, firePoint.position, Quaternion.identity);
+        GameObject normalTarget = GameObject.FindGameObjectWithTag(targetTag);
+
+        if (normalTarget != null)
+        {
+            Vector2 direction = (normalTarget.transform.position - firePoint.position).normalized;
+            Rigidbody2D rb = projectile.GetComponent<Rigidbody2D>();
+            
+            // Ok hızı (Görsel)
+            if (rb != null) rb.linearVelocity = direction * 15f; 
+
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            projectile.transform.rotation = Quaternion.Euler(new Vector3(0, 0, angle));
+
+            Projectile projScript = projectile.GetComponent<Projectile>();
+            if (projScript != null)
+            {
+                projScript.damage = (int)damage; 
+                projScript.targetTag = targetTag; 
             }
         }
         else
         {
-            Debug.LogWarning("Arrow Prefab atanmamış!");
+            // Hedef yoksa düz fırlat (Debug amaçlı)
+            Rigidbody2D rb = projectile.GetComponent<Rigidbody2D>();
+            if (rb != null)
+            {
+                 if (transform.localScale.x < 0) rb.linearVelocity = Vector2.left * 15f;
+                 else rb.linearVelocity = Vector2.right * 15f;
+            }
         }
+
+        // RAM KORUMASI: Ok bir yere çarpmazsa 5 saniye sonra yok olsun.
+        Destroy(projectile, 5.0f);
     }
 
-    // --- ANİMASYON VE SES FONKSİYONLARI ---
-
-    // 1. Yürüme Animasyonu ve Sesi (Aç/Kapa)
     public void SetMoveAnimation(bool isMoving)
     {
-        if (animator != null)
-        {
-            animator.SetBool("IsMoving", isMoving);
-        }
+        if (animator != null) animator.SetBool("IsMoving", isMoving);
     }
 
     public void ToggleWalkSound(bool isWalking)
     {
         if (audioSource == null || walkSound == null) return;
-
         if (isWalking)
         {
-            // Eğer zaten çalıyorsa tekrar başlatma (Sesin üst üste binmesini engeller)
             if (!audioSource.isPlaying || audioSource.clip != walkSound)
             {
                 audioSource.clip = walkSound;
-                audioSource.loop = true; // Yürüdüğü sürece döngüde kalsın
+                audioSource.loop = true;
                 audioSource.Play();
             }
         }
         else
         {
-            // Yürüme bittiyse durdur
             if (audioSource.clip == walkSound)
             {
                 audioSource.Stop();
@@ -129,32 +130,22 @@ public class Gladiator : MonoBehaviour
         }
     }
 
-    // 2. Saldırı Animasyonu ve Sesi (Tetikleyici)
-    // Hem Melee saldırıda hem de Ok atarken bunu çağırabiliriz
     public void TriggerAttack()
     {
-        if (animator != null)
-        {
-            animator.SetTrigger("Attack");
-        }
-
-        if (audioSource != null && attackSound != null)
-        {
-            audioSource.PlayOneShot(attackSound);
-        }
+        if (animator != null) animator.SetTrigger("Attack");
+        if (audioSource != null && attackSound != null) audioSource.PlayOneShot(attackSound);
     }
 
-    // 3. Hasar ve Ölüm Mantığı
     public void TakeDamage(int amount)
     {
-        // Zaten öldüyse tepki verme
         if (currentHP <= 0) return;
 
         float finalDamage = amount;
 
         if (armorUpActive)
         {
-            finalDamage *= 0.8f; // %20 hasar azaltma
+            // %30 HASAR AZALTMA
+            finalDamage *= 0.7f; 
         }
 
         currentHP -= Mathf.RoundToInt(finalDamage);
@@ -162,25 +153,14 @@ public class Gladiator : MonoBehaviour
 
         if (animator != null)
         {
-            if (currentHP <= 0)
-            {
-                // ÖLÜM
-                animator.SetTrigger("Death");
-            }
+            if (currentHP <= 0) animator.SetTrigger("Death");
             else
             {
-                // HASAR ALMA
                 animator.SetTrigger("Hit");
-
-                if (audioSource != null && hitSound != null)
-                {
-                    audioSource.PlayOneShot(hitSound);
-                }
+                if (audioSource != null && hitSound != null) audioSource.PlayOneShot(hitSound);
             }
         }
     }
-
-    // --- YARDIMCI FONKSİYONLAR ---
 
     public bool SpendMana(int amount)
     {
@@ -212,10 +192,7 @@ public class Gladiator : MonoBehaviour
         if (armorUpActive)
         {
             armorUpTurnsRemaining--;
-            if (armorUpTurnsRemaining <= 0)
-            {
-                armorUpActive = false;
-            }
+            if (armorUpTurnsRemaining <= 0) armorUpActive = false;
         }
     }
 }

@@ -6,14 +6,13 @@ public class PlayerController : MonoBehaviour
     public Gladiator player;
     public Gladiator enemy;
 
-    // Tur sonunu gecikmeli çalıştırmak için coroutine
     private IEnumerator EndPlayerTurnWithDelay()
     {
-        yield return new WaitForSeconds(2f);   // 2 saniye bekle
+        GameManager.Instance.uiManager.UpdateActionButtonsInteractable(false);
+        yield return new WaitForSeconds(1.5f);
         GameManager.Instance.EndPlayerTurn();
     }
 
-    // Oyuncu hamleyi seçtiği anda inputu kilitle
     private void LockPlayerTurn()
     {
         GameManager.Instance.isPlayerTurn = false;
@@ -24,15 +23,8 @@ public class PlayerController : MonoBehaviour
     {
         if (!GameManager.Instance.isPlayerTurn) return;
         if (!player.SpendMana(4)) return;
-
-        // 🔥 LOG EKLE: Oyuncu ne yaptı?
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu İleri Atıldı");
-        
-        // 🔥 PANEL KAPAT: Eğer Melee paneli açıksa kapat
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: İLERİ GİTTİ");
         LockPlayerTurn();
-
         GameManager.Instance.MoveCloser(true);
         StartCoroutine(EndPlayerTurnWithDelay());
     }
@@ -40,165 +32,56 @@ public class PlayerController : MonoBehaviour
     public void OnMoveBackward()
     {
         if (!GameManager.Instance.isPlayerTurn) return;
-        
-        // Zaten Far ise gitme kontrolü
-        if (GameManager.Instance.currentDistance == DistanceLevel.Far) 
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Zaten En Uzak Mesafedesin!");
-            return; 
-        }
-
         if (!player.SpendMana(4)) return;
-
-        // 🔥 LOG VE PANEL
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Geri Çekildi");
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: GERİ ÇEKİLDİ");
         LockPlayerTurn();
-
-        GameManager.Instance.MoveAway(true); 
+        GameManager.Instance.MoveAway(true);
         StartCoroutine(EndPlayerTurnWithDelay());
     }
 
     public void OnRangedAttack()
     {
         if (!GameManager.Instance.isPlayerTurn) return;
+        if (GameManager.Instance.currentDistance == DistanceLevel.Close) return;
+        if (player.currentAmmo <= 0 || !player.SpendMana(12)) return;
 
-        if (player.currentAmmo <= 0) 
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Mermi Bitti!");
-            return;
-        }
-
-        if (GameManager.Instance.currentDistance == DistanceLevel.Close)
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Mesafe Çok Yakın! Ok Atılamaz.");
-            return;
-        }
-
-        if (!player.SpendMana(20)) 
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Mana Yetersiz!");
-            return;
-        }
-
-        // 🔥 LOG VE PANEL
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Ok Fırlattı!");
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: OK ATTI! (15-20 Hsr)");
         LockPlayerTurn();
         player.currentAmmo--;
-
-        int damage = Random.Range(15, 21);
-        
-        // Ok fırlat
-        player.ShootProjectile("Enemy", damage);
-
+        player.ShootProjectile("Enemy", Random.Range(15, 21)); 
         StartCoroutine(EndPlayerTurnWithDelay());
     }
 
     public void OnMeleeButton()
     {
         if (!GameManager.Instance.isPlayerTurn) return;
-
-        if (GameManager.Instance.currentDistance != DistanceLevel.Close)
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Rakip Çok Uzakta! Yaklaşmalısın.");
-            return;
-        }
-
-        // Paneli aç
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(true);
-    }
-
-    public void OnQuickAttack()
-    {
-        if (!GameManager.Instance.isPlayerTurn) return;
         if (GameManager.Instance.currentDistance != DistanceLevel.Close) return;
-        if (!player.SpendMana(10)) return;
+        if (!player.SpendMana(20)) return;
 
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Hızlı Saldırı Yaptı!");
-
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: KILIÇ VURDU! (20-30 Hsr)");
         LockPlayerTurn();
-
         player.TriggerAttack();
-
-        if (Random.value <= 0.85f)
-        {
-            int dmg = Random.Range(10, 13);
-            enemy.TakeDamage(dmg);
-        }
-        else
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Iskaladı!");
-        }
-
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-        StartCoroutine(EndPlayerTurnWithDelay());
-    }
-
-    public void OnPowerAttack()
-    {
-        if (!GameManager.Instance.isPlayerTurn) return;
-        if (GameManager.Instance.currentDistance != DistanceLevel.Close) return;
-        if (!player.SpendMana(30)) return;
-
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Güçlü Saldırı Yaptı!");
-
-        LockPlayerTurn();
-
-        player.TriggerAttack();
-
-        if (Random.value <= 0.50f)
-        {
-            int dmg = Random.Range(25, 36);
-            enemy.TakeDamage(dmg);
-        }
-        else
-        {
-            GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Iskaladı!");
-        }
-
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
+        int damage = Random.Range(20, 31); 
+        if(enemy != null) enemy.TakeDamage(damage);
+        else GameManager.Instance.enemy.TakeDamage(damage);
         StartCoroutine(EndPlayerTurnWithDelay());
     }
 
     public void OnSleep()
     {
         if (!GameManager.Instance.isPlayerTurn) return;
-        
-        if (player.currentMana >= 50) 
-        {
-            // Mana çoksa uyumaya gerek yok uyarısı (Opsiyonel)
-            // Ama kural gereği "Mana < 50" şartı varsa buton zaten pasif olur.
-            return;
-        }
-
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Dinleniyor...");
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: DİNLENİYOR (+MANA)");
         LockPlayerTurn();
-
-        player.RestoreMana(40);
-        player.RestoreHP(15);
-
+        player.RestoreMana(40); // Sadece mana yeniler
         StartCoroutine(EndPlayerTurnWithDelay());
     }
 
     public void OnArmorUp()
     {
         if (!GameManager.Instance.isPlayerTurn) return;
-        if (!player.SpendMana(25)) return;
-
-        // 🔥 LOG
-        GameManager.Instance.uiManager.UpdateBattleLog("Oyuncu Savunmaya Geçti!");
-        GameManager.Instance.uiManager.ShowMeleeChoicePanel(false);
-
+        if (!player.SpendMana(15)) return;
+        GameManager.Instance.uiManager.SetTurnText("OYUNCU: KALKAN KALDIRDI");
         LockPlayerTurn();
-
         player.ActivateArmorUp(2);
         StartCoroutine(EndPlayerTurnWithDelay());
     }

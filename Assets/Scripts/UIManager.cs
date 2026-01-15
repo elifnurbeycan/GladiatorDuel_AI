@@ -4,104 +4,118 @@ using TMPro;
 
 public class UIManager : MonoBehaviour
 {
-    [Header("Player UI")]
-    public Slider playerHPSlider;
-    public Slider playerManaSlider;
-    public TextMeshProUGUI playerAmmoText;
-
-    [Header("Enemy UI")]
-    public Slider enemyHPSlider;
-    public Slider enemyManaSlider;
-    public TextMeshProUGUI enemyAmmoText;
-
-    [Header("General UI")]
-    public TextMeshProUGUI turnText;
-    public TextMeshProUGUI distanceText;
+    [Header("Battle Log")]
     public TextMeshProUGUI battleLogText;
 
-    [Header("Action Buttons")]
-    public Button moveForwardButton;
-    public Button moveBackwardButton;
-    public Button rangedButton;
-    public Button meleeButton;
-    public Button sleepButton;
-    public Button armorUpButton;
+    [Header("Health Bars")]
+    public Slider playerHealthSlider;
+    public Slider enemyHealthSlider;
+    public TextMeshProUGUI playerHealthText;
+    public TextMeshProUGUI enemyHealthText;
 
-    [Header("Melee Panel")]
+    [Header("Mana Bars")]
+    public Slider playerManaSlider;
+    public Slider enemyManaSlider;
+    public TextMeshProUGUI playerManaText;
+    public TextMeshProUGUI enemyManaText;
+
+    [Header("Ammo & Distance")]
+    public TextMeshProUGUI playerAmmoText;
+    public TextMeshProUGUI enemyAmmoText;
+    public TextMeshProUGUI distanceText; 
+
+    [Header("Turn Text")]
+    public TextMeshProUGUI turnText; 
+
+    [Header("Turn Indicators")]
+    public GameObject playerTurnIndicator;
+    public GameObject enemyTurnIndicator;
+
+    [Header("Action Buttons")]
+    public Button[] actionButtons; 
     public GameObject meleeChoicePanel;
 
-    [Header("Gladiator References")]
-    public Gladiator player;
-    public Gladiator enemy;
+    [Header("End Game")]
+    public GameObject endGamePanel;
+    public TextMeshProUGUI endGameMessageText;
 
-    public void UpdateAllUI()
-    {
-        // Player
-        playerHPSlider.maxValue = player.maxHP;
-        playerHPSlider.value    = player.currentHP;
-
-        playerManaSlider.maxValue = player.maxMana;
-        playerManaSlider.value    = player.currentMana;
-
-        playerAmmoText.text = "Ammo: " + player.currentAmmo;
-
-        // Enemy
-        enemyHPSlider.maxValue = enemy.maxHP;
-        enemyHPSlider.value    = enemy.currentHP;
-
-        enemyManaSlider.maxValue = enemy.maxMana;
-        enemyManaSlider.value    = enemy.currentMana;
-
-        enemyAmmoText.text = "Ammo: " + enemy.currentAmmo;
-
-        // Sleep butonu sadece mana < 50 iken aktif olsun (ve oyuncu sırasıysa)
-        bool canSleep = player.currentMana < 50 && GameManager.Instance.isPlayerTurn;
-        sleepButton.interactable = canSleep;
-    }
+    // --- TEMEL GÜNCELLEMELER ---
 
     public void SetTurnText(string txt)
     {
-        turnText.text = txt;
+        if (turnText != null) 
+        {
+            turnText.text = txt;
+            
+            turnText.enableAutoSizing = true;
+            turnText.fontSizeMin = 18; // En küçük bu kadar olsun
+            turnText.fontSizeMax = 50; // En büyük bu kadar olsun
+        }
     }
 
-    public void UpdateDistanceText(DistanceLevel dist)
+    public void UpdateDistanceText(DistanceLevel distance)
     {
-        distanceText.text = "Distance: " + dist.ToString();
+        if (distanceText == null) return;
+        // Sadece enum ismini yazdır (Distance: Mid)
+        distanceText.text = "Distance: " + distance.ToString();
     }
 
     public void UpdateBattleLog(string message)
     {
-        if (battleLogText != null)
-        {
-            battleLogText.text = message;
-            
-            // İstersen 2 saniye sonra silinmesi için Coroutine yazabilirsin
-            // ama şimdilik kalıcı dursun, yeni mesaj gelince değişsin.
-        }
+        if (battleLogText != null) battleLogText.text = message;
     }
 
-    public void UpdateActionButtonsInteractable(bool enable)
+    // --- BARLAR VE SLIDERLAR ---
+    public void UpdateHealth(float playerHP, float enemyHP, float maxHP)
     {
-        moveForwardButton.interactable  = enable;
-        moveBackwardButton.interactable = enable;
-        rangedButton.interactable       = enable;
-        meleeButton.interactable        = enable;
-        armorUpButton.interactable      = enable;
+        if (playerHealthSlider) playerHealthSlider.value = playerHP / maxHP;
+        if (enemyHealthSlider) enemyHealthSlider.value = enemyHP / maxHP;
+        
+        if (playerHealthText) playerHealthText.text = $"{playerHP}/{maxHP}";
+        if (enemyHealthText) enemyHealthText.text = $"{enemyHP}/{maxHP}";
+    }
 
-        if (!enable)
+    public void UpdateMana(float playerMana, float enemyMana, float maxMana)
+    {
+        if (playerManaSlider) playerManaSlider.value = playerMana / maxMana;
+        if (enemyManaSlider) enemyManaSlider.value = enemyMana / maxMana;
+
+        if (playerManaText) playerManaText.text = $"{playerMana}/{maxMana}";
+        if (enemyManaText) enemyManaText.text = $"{enemyMana}/{maxMana}";
+    }
+
+    public void UpdateAmmo(int playerAmmo, int enemyAmmo)
+    {
+        if (playerAmmoText) playerAmmoText.text = $"Ok: {playerAmmo}";
+        if (enemyAmmoText) enemyAmmoText.text = $"Ok: {enemyAmmo}";
+    }
+
+    // --- BUTON VE OYUN KONTROLÜ ---
+    public void UpdateTurnIndicator(bool isPlayerTurn)
+    {
+        if (playerTurnIndicator) playerTurnIndicator.SetActive(isPlayerTurn);
+        if (enemyTurnIndicator) enemyTurnIndicator.SetActive(!isPlayerTurn);
+    }
+
+    public void UpdateActionButtonsInteractable(bool interactable)
+    {
+        foreach (var btn in actionButtons)
         {
-            // Tur rakipteyken sleep'i de kapat
-            sleepButton.interactable = false;
-        }
-        else
-        {
-            // Oyuncu turu başladığında tekrar güncellensin
-            UpdateAllUI();
+            if (btn != null) btn.interactable = interactable;
         }
     }
 
     public void ShowMeleeChoicePanel(bool show)
     {
-        meleeChoicePanel.SetActive(show);
+        if (meleeChoicePanel) meleeChoicePanel.SetActive(show);
+    }
+
+    public void ShowEndGamePanel(string message)
+    {
+        if (endGamePanel)
+        {
+            endGamePanel.SetActive(true);
+            if (endGameMessageText) endGameMessageText.text = message;
+        }
     }
 }
