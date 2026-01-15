@@ -8,7 +8,7 @@
 
 ## 📸 Oyun İçi Görseller
 
-*(Buraya oyunundan ekran görüntüleri ekleyebilirsiniz)*
+
 <img width="957" height="597" alt="Oyun Ekranı" src="https://github.com/user-attachments/assets/04f3d776-8472-49c5-9ace-be3454e1ed6d" />
 
 ---
